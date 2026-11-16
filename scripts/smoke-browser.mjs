@@ -1,0 +1,48 @@
+import {chromium} from '../data/browser-tools/node_modules/playwright/index.mjs'
+import {readFileSync} from 'node:fs'
+import path from 'node:path'
+import {fileURLToPath} from 'node:url'
+import assert from 'node:assert/strict'
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
+const config=readFileSync(path.join(root,'.env.local'),'utf8')
+const password=config.match(/^BOOTSTRAP_ADMIN_PASSWORD=(.+)$/m)[1].trim()
+const browser=await chromium.launch({executablePath:'C:\\Users\\Administrator\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe',headless:true})
+const page=await browser.newPage({viewport:{width:1440,height:1000}})
+page.setDefaultTimeout(45000)
+const errors=[];const failures=[]
+page.on('pageerror',e=>errors.push(e.message))
+page.on('response',r=>{if(r.url().includes('/api/')&&r.status()>=400&&!r.url().endsWith('/auth/me'))failures.push(`${r.status()} ${r.url()}`)})
+try{
+  await page.goto('http://127.0.0.1:5173/login')
+  await page.getByPlaceholder('请输入用户名').fill('admin')
+  await page.getByPlaceholder('请输入密码').fill(password)
+  await page.getByRole('button',{name:'登 录'}).click()
+  await page.waitForURL('**/dashboard')
+  await page.locator('.stat-card strong').filter({hasText:'6'}).waitFor()
+  await page.screenshot({path:path.join(root,'logs','dashboard.png'),fullPage:true})
+  await page.goto('http://127.0.0.1:5173/members')
+  await page.getByText('陈晨',{exact:true}).first().waitFor()
+  assert.equal(await page.locator('.el-table__body-wrapper tbody tr').count(),6)
+  await page.getByText('陈晨',{exact:true}).first().click()
+  await page.getByRole('tab',{name:'族谱扩展资料'}).click()
+  const value=page.locator('.field-row input').first()
+  assert.equal(await value.inputValue(),'晨（演示）')
+  await value.fill('晨（演示验证）')
+  await page.getByRole('button',{name:'保存资料'}).click()
+  await page.getByText('成员资料已保存',{exact:true}).waitFor()
+  await page.reload()
+  await page.getByRole('tab',{name:'族谱扩展资料'}).click()
+  await page.locator('.field-row input').first().waitFor()
+  assert.equal(await page.locator('.field-row input').first().inputValue(),'晨（演示验证）')
+  await page.locator('.field-row input').first().fill('晨（演示）')
+  await page.getByRole('button',{name:'保存资料'}).click()
+  await page.getByText('成员资料已保存',{exact:true}).waitFor()
+  await page.screenshot({path:path.join(root,'logs','member-detail.png'),fullPage:true})
+  await page.goto('http://127.0.0.1:5173/graph')
+  await page.locator('svg').first().waitFor()
+  await page.getByText('陈文山',{exact:false}).first().waitFor()
+  await page.screenshot({path:path.join(root,'logs','graph.png'),fullPage:true})
+  assert.deepEqual(errors,[])
+  assert.deepEqual(failures,[])
+  console.log(JSON.stringify({result:'PASS',checks:['UI login','dashboard','member list (6 rows)','custom field edit/save/reload','graph render'],pageErrors:errors,apiFailures:failures,screenshots:['logs/dashboard.png','logs/member-detail.png','logs/graph.png']},null,2))
+}finally{await browser.close()}

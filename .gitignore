@@ -1,0 +1,45 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+
+# Backups, uploads, and runtime data
+backups/
+data/
+uploads/
+*.sql
+*.sql.gz
+*.tar.gz
+
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+*.temp
+.cache/
+
+# Java / backend
+backend/target/
+backend/build/
+*.class
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE / OS
+.vscode/
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
