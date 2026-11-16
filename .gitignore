@@ -11,6 +11,8 @@ backups/
 data/
 uploads/
 *.sql
+# Flyway schema migrations are source code, not database dumps.
+!backend/src/main/resources/db/migration/*.sql
 *.sql.gz
 *.tar.gz
 

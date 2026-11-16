@@ -1,39 +1,21 @@
 [CmdletBinding()]
 param()
-
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $EnvFile = Join-Path $Root '.env'
-$ComposeFile = Join-Path $Root 'deploy\compose.yaml'
-
-if ((Split-Path -Leaf $Root) -cne 'family-tree') {
-    throw "The project directory must be named family-tree. Current name: $(Split-Path -Leaf $Root)"
-}
-
-if (-not (Get-Command 'docker' -ErrorAction SilentlyContinue)) {
-    throw 'Docker was not found. Install Docker Desktop and make sure docker is in PATH.'
-}
-
-docker version | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Docker is unavailable. Start Docker Desktop.' }
-docker compose version | Out-Null
+$ComposeFile = Join-Path $Root 'compose.yaml'
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'Docker was not found. Install/start Docker Desktop in Linux containers mode, or Docker Engine with Compose v2.' }
+& docker version | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Docker Engine is unavailable. Start Docker Desktop first.' }
+& docker compose version | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Docker Compose v2 is unavailable.' }
-
-if (-not (Test-Path $EnvFile)) {
-    throw 'Missing .env. Run: Copy-Item .env.example .env, then replace every CHANGE_ME value.'
+if (-not (Test-Path -LiteralPath $EnvFile)) { throw 'Missing .env. For an existing installation run node scripts/prepare-compose.mjs; otherwise copy .env.example to .env and configure it.' }
+$Text = [IO.File]::ReadAllText($EnvFile)
+if ($Text -match 'CHANGE_ME') { throw '.env still contains CHANGE_ME placeholders.' }
+foreach ($Name in @('DB_URL','DB_USERNAME','DB_PASSWORD','BOOTSTRAP_ADMIN_PASSWORD','APP_DATA_ENCRYPTION_KEY')) {
+    if ($Text -notmatch "(?m)^$([regex]::Escape($Name))=.+$") { throw "Missing environment variable: $Name" }
 }
-
-$envText = [IO.File]::ReadAllText($EnvFile)
-if ($envText -match 'CHANGE_ME') { throw '.env still contains CHANGE_ME placeholders.' }
-
-$required = @('MYSQL_DATABASE', 'MYSQL_USER', 'MYSQL_PASSWORD', 'MYSQL_ROOT_PASSWORD', 'ADMIN_PASSWORD', 'APP_DATA_ENCRYPTION_KEY')
-foreach ($name in $required) {
-    if ($envText -notmatch "(?m)^$([regex]::Escape($name))=.+$") {
-        throw ".env is missing a non-empty variable: $name"
-    }
-}
-
-docker compose --env-file $EnvFile -f $ComposeFile config --quiet
-if ($LASTEXITCODE -ne 0) { throw 'Docker Compose configuration validation failed.' }
-
-Write-Host 'Checks passed: directory, Docker, environment, and Compose configuration are valid.'
+# Never print `docker compose config`: it includes expanded passwords and encryption keys.
+& docker compose --env-file $EnvFile -f $ComposeFile config --quiet
+if ($LASTEXITCODE -ne 0) { throw 'Compose configuration validation failed.' }
+Write-Host 'Checks passed: Docker Engine, Compose, environment and root compose.yaml.'

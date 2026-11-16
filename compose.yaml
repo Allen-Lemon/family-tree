@@ -1,0 +1,93 @@
+name: ${COMPOSE_PROJECT_NAME:-family-tree}
+
+# Default deployment uses the existing remote MySQL; no local database is created.
+services:
+  backend:
+    image: family-tree-backend:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      SERVER_PORT: "8080"
+      # The local source-mode config binds to loopback; containers must listen on all interfaces.
+      SERVER_ADDRESS: "0.0.0.0"
+      JAVA_TOOL_OPTIONS: "-Djava.awt.headless=true"
+      DB_URL: ${DB_URL:?Configure DB_URL in .env}
+      DB_USERNAME: ${DB_USERNAME:?Configure DB_USERNAME in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?Configure DB_PASSWORD in .env}
+      APP_DATA_ENCRYPTION_KEY: ${APP_DATA_ENCRYPTION_KEY:?Keep the existing encryption key in .env}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Configure initial administrator password in .env}
+      STORAGE_ROOT: /app/uploads
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-20MB}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-20971520}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      OCR_ENABLED: ${OCR_ENABLED:-false}
+      OCR_PROVIDER: ${OCR_PROVIDER:-disabled}
+      OCR_ENDPOINT: ${OCR_ENDPOINT:-}
+      OCR_API_KEY: ${OCR_API_KEY:-}
+      CLAMAV_ENABLED: ${CLAMAV_ENABLED:-false}
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+    expose:
+      - "8080"
+    volumes:
+      # Preserve existing photos, uploads, exports and backups when switching from source mode.
+      - type: bind
+        source: ${UPLOADS_PATH:-./data/uploads}
+        target: /app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "http://127.0.0.1:8080/actuator/health"]
+      interval: 15s
+      timeout: 7s
+      retries: 12
+      start_period: 90s
+    stop_grace_period: 30s
+    networks:
+      - app
+
+  frontend:
+    image: family-tree-frontend:${IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      # Loopback by default; explicitly set HTTP_BIND=0.0.0.0 for remote access.
+      - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-8088}:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - app
+
+  clamav:
+    image: clamav/clamav:1.4
+    profiles: ["antivirus"]
+    restart: unless-stopped
+    volumes:
+      - clamav_db:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    networks:
+      - app
+
+volumes:
+  clamav_db:
+
+networks:
+  app:
+    driver: bridge

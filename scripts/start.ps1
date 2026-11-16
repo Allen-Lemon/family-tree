@@ -7,17 +7,17 @@ param(
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $EnvFile = Join-Path $Root '.env'
-$ComposeFile = Join-Path $Root 'deploy\compose.yaml'
+$ComposeFile = Join-Path $Root 'compose.yaml'
 
 & (Join-Path $PSScriptRoot 'bootstrap-check.ps1')
 
 $argsList = @('compose', '--env-file', $EnvFile, '-f', $ComposeFile)
 if ($WithAntivirus) { $argsList += @('--profile', 'antivirus') }
-$argsList += @('up', '-d')
+$argsList += @('up', '-d', '--wait', '--wait-timeout', '300')
 if (-not $NoBuild) { $argsList += '--build' }
 
 & docker @argsList
 if ($LASTEXITCODE -ne 0) { throw 'Startup failed. Check docker compose logs.' }
 
 & docker compose --env-file $EnvFile -f $ComposeFile ps
-Write-Host 'family-tree is running. Default URL: http://localhost/'
+Write-Host 'family-tree is healthy. Default URL: http://127.0.0.1:8088/ (or HTTP_BIND/HTTP_PORT in .env).'

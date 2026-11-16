@@ -1,0 +1,36 @@
+# Deny by default: never send local secrets, private uploads, or generated artifacts.
+**
+!backend/
+!backend/pom.xml
+!backend/src/
+!backend/src/**
+!frontend/
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/index.html
+!frontend/tsconfig*.json
+!frontend/vite.config.ts
+!frontend/vitest.config.ts
+!frontend/src/
+!frontend/src/**
+!frontend/tests/
+!frontend/tests/**
+!frontend/public/
+!frontend/public/**
+!deploy/
+!deploy/backend.Dockerfile
+!deploy/frontend.Dockerfile
+!deploy/nginx/
+!deploy/nginx/default.conf
+
+# Defense in depth, even if an allowed directory later contains one of these.
+**/.env
+**/.env.*
+**/secrets
+**/*.key
+**/*.pem
+**/*.log
+**/*.err
+**/node_modules
+**/target
+**/dist
