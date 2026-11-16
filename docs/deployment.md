@@ -149,3 +149,31 @@ docker compose up -d --wait --wait-timeout 300
 原 `scripts/backup.ps1` 原先只适用于本地 MySQL 容器，默认外部数据库模式不适用。它现在会明确拒绝并提示使用远程数据库的 mysqldump/托管备份，不能误以为容器卷包含数据库。完整备份应包括：远程 MySQL 导出、宿主机上传目录、`.env` 中的原加密密钥（分别安全保管）。
 
 旧命令 `docker compose --env-file .env -f deploy/compose.yaml ...` 作为兼容入口包含根 Compose，但不再启动本地 MySQL。今后统一使用根目录命令，避免维护两份互相矛盾的部署配置。
+
+## 7. CentOS 7：Nginx 写 PID 返回 EPERM
+
+若后端 healthy，而前端反复重启，日志为 `pwrite() "/run/nginx.pid" failed (1: Operation not permitted)`，同时宿主机内核为 `3.10.*.el7`：这是前端运行时启动失败，不是数据库配置错误。较新 Alpine/musl 与旧内核、Docker/libseccomp/seccomp 组合可能存在系统调用兼容问题；仅凭该日志不能排除其他策略或文件系统限制。
+
+前端运行镜像已从 `nginx:stable-alpine` 改为显式 Debian Bookworm 变体 `nginx:stable-bookworm`，同时健康检查改为 curl。生产可通过 `NGINX_IMAGE` 选择经过验证的具体标签或 digest；不要只改镜像而忘记健康检查。仅重建前端，不重启后端或修改数据库：
+
+```sh
+docker compose build --pull frontend
+docker compose run --rm --no-deps frontend nginx -t
+docker compose up -d --no-deps --force-recreate frontend
+docker compose ps
+docker compose logs --tail 50 frontend
+curl --fail http://127.0.0.1:8088/healthz
+```
+
+必须先把修订后的 `deploy/frontend.Dockerfile` 和 `compose.yaml` 上传到服务器；修改本机文件不会改变服务器镜像。直接 `docker compose restart` 不会应用 Dockerfile 修改。若已有环境变量 `NGINX_IMAGE` 指向 Alpine，需更新该值或显式用 `docker compose build --build-arg NGINX_IMAGE=nginx:stable-bookworm frontend`。
+
+如更换运行发行版后仍失败，收集（不要贴含凭据的完整 docker inspect/config）：
+
+```sh
+uname -r
+docker version
+docker info --format '{{json .SecurityOptions}}'
+docker compose run --rm --no-deps frontend sh -c 'id; ls -ld /run; nginx -t'
+```
+
+不要用 `privileged: true`、关闭全部 seccomp、`chmod -R 777` 或全局关闭 SELinux 作为默认修复。CentOS 7 已停止维护，后续应迁移到受支持系统并升级 Docker、容器运行时及 libseccomp；重建前端的兼容调整不等于旧宿主机已获得长期安全支持。本地开发环境无 Docker，未验证此更改在目标服务器上的实际启动结果。
